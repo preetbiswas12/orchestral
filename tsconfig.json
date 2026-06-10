@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "types": ["node", "bun-types"],
+    "paths": {
+      "src/*": ["./src/*"],
+      "@anthropic-ai/bedrock-sdk": ["./src/stubs/bedrock-sdk"],
+      "@anthropic-ai/foundry-sdk": ["./src/stubs/foundry-sdk"],
+      "@anthropic-ai/vertex-sdk": ["./src/stubs/vertex-sdk"],
+      "@anthropic-ai/mcpb": ["./src/stubs/mcpb"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
