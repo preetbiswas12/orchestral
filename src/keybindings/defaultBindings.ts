@@ -58,6 +58,12 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
           }
         : {}),
       ...(feature('TERMINAL_PANEL') ? { 'meta+j': 'app:toggleTerminal' } : {}),
+      // New command shortcuts
+      'meta+p': 'app:commandPalette',
+      'ctrl+shift+a': 'app:tokenAnalytics',
+      'meta+c': 'app:contextEngine',
+      'meta+a': 'app:agentDashboard',
+      'meta+w': 'app:webDashboard',
     },
   },
   {

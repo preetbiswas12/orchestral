@@ -19,6 +19,14 @@ export type ProviderId =
   | 'openai'
   | 'gemini'
   | 'ollama'
+  | 'mistral'
+  | 'groq'
+  | 'deepseek'
+  | 'perplexity'
+  | 'cohere'
+  | 'xai'
+  | 'bedrock'
+  | 'azure-openai'
 
 // ============================================================================
 // Model Definitions
@@ -392,6 +400,18 @@ export type ProviderErrorCode =
   | 'UNSUPPORTED_FEATURE'
 
 // ============================================================================
+// Model Task Types (for smart routing)
+// ============================================================================
+
+export type ModelTask =
+  | 'quick'          // Simple Q&A, formatting, trivial tasks
+  | 'coding'         // Code generation, refactoring, debugging
+  | 'reasoning'      // Complex analysis, architecture decisions
+  | 'vision'         // Image understanding, screenshot analysis
+  | 'long-context'   // Large file analysis, codebase-wide tasks
+  | 'creative'       // Writing, brainstorming, design
+
+// ============================================================================
 // Default Models per Provider (April 2026)
 // ============================================================================
 
@@ -399,8 +419,16 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: 'claude-sonnet-4-6',
   openrouter: 'openai/gpt-5.3-codex',
   openai: 'gpt-5.3-codex',
-  gemini: 'gemini-2.5-flash', // Best for free tier
+  gemini: 'gemini-2.5-flash',
   ollama: 'qwen3.5:latest',
+  mistral: 'mistral-large-latest',
+  groq: 'llama-3.3-70b-versatile',
+  deepseek: 'deepseek-reasoner',
+  perplexity: 'perplexity-sonar-pro',
+  cohere: 'command-r-plus',
+  xai: 'grok-3',
+  bedrock: 'anthropic.claude-sonnet-4-6',
+  'azure-openai': 'gpt-5.3-codex',
 }
 
 // ============================================================================
@@ -413,4 +441,12 @@ export const DEFAULT_BASE_URLS: Record<ProviderId, string> = {
   openai: 'https://api.openai.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
   ollama: 'http://localhost:11434',
+  mistral: 'https://api.mistral.ai/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  perplexity: 'https://api.perplexity.ai/v1',
+  cohere: 'https://api.cohere.ai/v1',
+  xai: 'https://api.x.ai/v1',
+  bedrock: '', // Must be configured with region-specific endpoint
+  'azure-openai': '', // Must be configured with Azure resource URL
 }

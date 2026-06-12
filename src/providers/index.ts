@@ -90,6 +90,32 @@ export {
   shouldWrapClient,
 } from './clientWrapper.js'
 
+// Smart routing
+export {
+  getBestModelForTask,
+  getFallbackChain,
+  createCompletionWithFallback,
+  createStreamingCompletionWithFallback,
+  getRoutingRecommendations,
+} from './router.js'
+
+// Cost optimization
+export {
+  calculateCost,
+  recordCost,
+  getCostSummary,
+  getTodayCost,
+  getMonthCost,
+  findCheapestModel,
+  setBudgetConfig,
+  getBudgetConfig,
+  getActiveAlerts,
+  clearCostLog,
+  type CostEntry,
+  type CostSummary,
+  type BudgetConfig,
+} from './costOptimizer.js'
+
 // Provider implementations
 export { BaseProvider } from './base.js'
 export { AnthropicProvider } from './anthropic.js'
@@ -97,6 +123,12 @@ export { OpenAIProvider } from './openai.js'
 export { OpenRouterProvider } from './openrouter.js'
 export { GeminiProvider } from './gemini.js'
 export { OllamaProvider } from './ollama.js'
+export { MistralProvider } from './mistral.js'
+export { GroqProvider } from './groq.js'
+export { DeepSeekProvider } from './deepseek.js'
+export { PerplexityProvider } from './perplexity.js'
+export { CohereProvider } from './cohere.js'
+export { XaiProvider } from './xai.js'
 
 // ============================================================================
 // Initialization Helper
@@ -109,6 +141,12 @@ import { OpenAIProvider } from './openai.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { GeminiProvider } from './gemini.js'
 import { OllamaProvider } from './ollama.js'
+import { MistralProvider } from './mistral.js'
+import { GroqProvider } from './groq.js'
+import { DeepSeekProvider } from './deepseek.js'
+import { PerplexityProvider } from './perplexity.js'
+import { CohereProvider } from './cohere.js'
+import { XaiProvider } from './xai.js'
 
 let initialized = false
 
@@ -135,6 +173,12 @@ export async function initializeMultiProvider(): Promise<{
   registry.register(new OpenAIProvider())
   registry.register(new GeminiProvider())
   registry.register(new OllamaProvider())
+  registry.register(new MistralProvider())
+  registry.register(new GroqProvider())
+  registry.register(new DeepSeekProvider())
+  registry.register(new PerplexityProvider())
+  registry.register(new CohereProvider())
+  registry.register(new XaiProvider())
 
   // Load config and initialize
   const config = loadConfig()

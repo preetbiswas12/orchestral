@@ -1,14 +1,19 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
+import auto from './commands/auto/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
+import batch from './commands/batch/index.js'
 import btw from './commands/btw/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
+import changelog from './commands/changelog/index.js'
 import clear from './commands/clear/index.js'
+import codeReview from './commands/code-review/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
+import commitGen from './commands/commit-gen/index.js'
 import copy from './commands/copy/index.js'
 import desktop from './commands/desktop/index.js'
 import commitPushPr from './commands/commit-push-pr.js'
@@ -38,7 +43,11 @@ import releaseNotes from './commands/release-notes/index.js'
 import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
+import docs from './commands/docs/index.js'
+import scaffold from './commands/scaffold/index.js'
 import session from './commands/session/index.js'
+import sessions from './commands/sessions/index.js'
+import snippets from './commands/snippets/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
@@ -173,6 +182,7 @@ import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
+import providerSetup from './commands/provider-setup/index.js'
 import providers from './commands/providers/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
@@ -187,6 +197,11 @@ import rateLimitOptions from './commands/rate-limit-options/index.js'
 import statusline from './commands/statusline.js'
 import effort from './commands/effort/index.js'
 import stats from './commands/stats/index.js'
+import testCmd from './commands/test-cmd/index.js'
+import tokenAnalytics from './commands/token-analytics/index.js'
+import contextEngine from './commands/context-engine/index.js'
+import agentDashboard from './commands/agent-dashboard/index.js'
+import web from './commands/web/index.js'
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
 // shim defers the heavy module until /insights is actually invoked.
 const usageReport: Command = {
@@ -261,17 +276,25 @@ const COMMANDS = memoize((): Command[] => [
   addDir,
   advisor,
   agents,
+  auto,
+  batch,
   branch,
   btw,
+  changelog,
   chrome,
   clear,
+  codeReview,
   color,
+  commitGen,
   compact,
   config,
   copy,
   desktop,
   context,
   contextNonInteractive,
+  contextEngine,
+  agentDashboard,
+  web,
   cost,
   diff,
   doctor,
@@ -299,14 +322,20 @@ const COMMANDS = memoize((): Command[] => [
   reloadPlugins,
   rename,
   resume,
+  docs,
+  scaffold,
   session,
+  sessions,
   skills,
+  snippets,
   stats,
   status,
   statusline,
   stickers,
   tag,
+  testCmd,
   theme,
+  tokenAnalytics,
   feedback,
   review,
   ultrareview,
@@ -335,6 +364,7 @@ const COMMANDS = memoize((): Command[] => [
   permissions,
   plan,
   privacySettings,
+  providerSetup,
   hooks,
   exportCommand,
   sandboxToggle,

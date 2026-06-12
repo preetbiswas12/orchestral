@@ -490,6 +490,288 @@ export const OLLAMA_MODELS: ModelInfo[] = [
 ]
 
 // ============================================================================
+// Mistral AI Models (June 2026)
+// ============================================================================
+
+export const MISTRAL_MODELS: ModelInfo[] = [
+  {
+    id: 'mistral-large-latest',
+    name: 'Mistral Large 3',
+    provider: 'mistral',
+    contextWindow: 131_072,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, extendedThinking: true },
+    isDefault: true,
+    meta: { family: 'mistral-large', inputCostPerMTok: 2, outputCostPerMTok: 6 },
+  },
+  {
+    id: 'mistral-medium-latest',
+    name: 'Mistral Medium 3',
+    provider: 'mistral',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: STANDARD_CAPABILITIES,
+    meta: { family: 'mistral-medium', inputCostPerMTok: 0.4, outputCostPerMTok: 2 },
+  },
+  {
+    id: 'mistral-small-latest',
+    name: 'Mistral Small 4',
+    provider: 'mistral',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'mistral-small', inputCostPerMTok: 0.1, outputCostPerMTok: 0.3 },
+  },
+  {
+    id: 'codestral-latest',
+    name: 'Codestral',
+    provider: 'mistral',
+    contextWindow: 256_000,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: false },
+    meta: { family: 'codestral', specialization: 'code', inputCostPerMTok: 0.3, outputCostPerMTok: 0.9 },
+  },
+  {
+    id: 'pixtral-large-latest',
+    name: 'Pixtral Large',
+    provider: 'mistral',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: true },
+    meta: { family: 'pixtral', specialization: 'vision', inputCostPerMTok: 2, outputCostPerMTok: 6 },
+  },
+  {
+    id: 'ministral-8b-latest',
+    name: 'Ministral 8B',
+    provider: 'mistral',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'ministral', inputCostPerMTok: 0.1, outputCostPerMTok: 0.1 },
+  },
+]
+
+// ============================================================================
+// Groq Models (June 2026) — Ultra-fast LPU inference
+// ============================================================================
+
+export const GROQ_MODELS: ModelInfo[] = [
+  {
+    id: 'llama-3.3-70b-versatile',
+    name: 'Llama 3.3 70B Versatile',
+    provider: 'groq',
+    contextWindow: 131_072,
+    maxOutputTokens: 32_000,
+    capabilities: STANDARD_CAPABILITIES,
+    isDefault: true,
+    meta: { family: 'llama', speed: 'ultra-fast', inputCostPerMTok: 0.59, outputCostPerMTok: 0.79 },
+  },
+  {
+    id: 'llama-3.1-8b-instant',
+    name: 'Llama 3.1 8B Instant',
+    provider: 'groq',
+    contextWindow: 131_072,
+    maxOutputTokens: 8_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'llama', speed: 'ultra-fast', inputCostPerMTok: 0.05, outputCostPerMTok: 0.08 },
+  },
+  {
+    id: 'mixtral-8x7b-32768',
+    name: 'Mixtral 8x7B',
+    provider: 'groq',
+    contextWindow: 32_768,
+    maxOutputTokens: 8_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'mixtral', speed: 'ultra-fast', inputCostPerMTok: 0.24, outputCostPerMTok: 0.24 },
+  },
+  {
+    id: 'gemma-2-9b-it',
+    name: 'Gemma 2 9B',
+    provider: 'groq',
+    contextWindow: 8_192,
+    maxOutputTokens: 4_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'gemma', speed: 'ultra-fast', inputCostPerMTok: 0.2, outputCostPerMTok: 0.2 },
+  },
+  {
+    id: 'qwen-2.5-32b',
+    name: 'Qwen 2.5 32B',
+    provider: 'groq',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: STANDARD_CAPABILITIES,
+    meta: { family: 'qwen', speed: 'ultra-fast', inputCostPerMTok: 0.79, outputCostPerMTok: 0.79 },
+  },
+  {
+    id: 'deepseek-r1-distill-llama-70b',
+    name: 'DeepSeek R1 Distill Llama 70B',
+    provider: 'groq',
+    contextWindow: 131_072,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, extendedThinking: true },
+    meta: { family: 'deepseek', speed: 'ultra-fast', inputCostPerMTok: 0.75, outputCostPerMTok: 0.99 },
+  },
+]
+
+// ============================================================================
+// DeepSeek Models (June 2026)
+// ============================================================================
+
+export const DEEPSEEK_MODELS: ModelInfo[] = [
+  {
+    id: 'deepseek-reasoner',
+    name: 'DeepSeek R1 (Reasoner)',
+    provider: 'deepseek',
+    contextWindow: 128_000,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, extendedThinking: true },
+    isDefault: true,
+    meta: { family: 'deepseek-r1', inputCostPerMTok: 0.55, outputCostPerMTok: 2.19 },
+  },
+  {
+    id: 'deepseek-chat',
+    name: 'DeepSeek V3 (Chat)',
+    provider: 'deepseek',
+    contextWindow: 128_000,
+    maxOutputTokens: 32_000,
+    capabilities: STANDARD_CAPABILITIES,
+    meta: { family: 'deepseek-v3', inputCostPerMTok: 0.27, outputCostPerMTok: 1.10 },
+  },
+  {
+    id: 'deepseek-coder',
+    name: 'DeepSeek Coder V2',
+    provider: 'deepseek',
+    contextWindow: 128_000,
+    maxOutputTokens: 16_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: false },
+    meta: { family: 'deepseek-coder', specialization: 'code', inputCostPerMTok: 0.27, outputCostPerMTok: 1.10 },
+  },
+]
+
+// ============================================================================
+// Perplexity Models (June 2026) — AI-powered search
+// ============================================================================
+
+export const PERPLEXITY_MODELS: ModelInfo[] = [
+  {
+    id: 'perplexity-sonar-pro',
+    name: 'Sonar Pro',
+    provider: 'perplexity',
+    contextWindow: 200_000,
+    maxOutputTokens: 16_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: false, tools: false },
+    isDefault: true,
+    meta: { family: 'sonar', webSearch: true, inputCostPerMTok: 3, outputCostPerMTok: 15 },
+  },
+  {
+    id: 'perplexity-sonar',
+    name: 'Sonar',
+    provider: 'perplexity',
+    contextWindow: 128_000,
+    maxOutputTokens: 8_000,
+    capabilities: { ...BASIC_CAPABILITIES, vision: false, tools: false },
+    meta: { family: 'sonar', webSearch: true, inputCostPerMTok: 1, outputCostPerMTok: 1 },
+  },
+  {
+    id: 'perplexity-sonar-reasoning-pro',
+    name: 'Sonar Reasoning Pro',
+    provider: 'perplexity',
+    contextWindow: 200_000,
+    maxOutputTokens: 16_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: false, tools: false, extendedThinking: true },
+    meta: { family: 'sonar-reasoning', webSearch: true, inputCostPerMTok: 3, outputCostPerMTok: 15 },
+  },
+  {
+    id: 'perplexity-sonar-deep-research',
+    name: 'Sonar Deep Research',
+    provider: 'perplexity',
+    contextWindow: 200_000,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, vision: false, tools: false, extendedThinking: true },
+    meta: { family: 'sonar-deep', webSearch: true, deepResearch: true, inputCostPerMTok: 5, outputCostPerMTok: 25 },
+  },
+]
+
+// ============================================================================
+// Cohere Models (June 2026)
+// ============================================================================
+
+export const COHERE_MODELS: ModelInfo[] = [
+  {
+    id: 'command-r-plus',
+    name: 'Command R+',
+    provider: 'cohere',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: STANDARD_CAPABILITIES,
+    isDefault: true,
+    meta: { family: 'command-r', inputCostPerMTok: 2.5, outputCostPerMTok: 10 },
+  },
+  {
+    id: 'command-r',
+    name: 'Command R',
+    provider: 'cohere',
+    contextWindow: 131_072,
+    maxOutputTokens: 8_000,
+    capabilities: STANDARD_CAPABILITIES,
+    meta: { family: 'command-r', inputCostPerMTok: 0.15, outputCostPerMTok: 0.6 },
+  },
+  {
+    id: 'command-r7b',
+    name: 'Command R7B',
+    provider: 'cohere',
+    contextWindow: 131_072,
+    maxOutputTokens: 8_000,
+    capabilities: BASIC_CAPABILITIES,
+    meta: { family: 'command-r', inputCostPerMTok: 0.0375, outputCostPerMTok: 0.15 },
+  },
+  {
+    id: 'command-a',
+    name: 'Command A',
+    provider: 'cohere',
+    contextWindow: 256_000,
+    maxOutputTokens: 32_000,
+    capabilities: { ...STANDARD_CAPABILITIES, extendedThinking: true },
+    meta: { family: 'command-a', inputCostPerMTok: 2.5, outputCostPerMTok: 10 },
+  },
+]
+
+// ============================================================================
+// xAI (Grok) Models (June 2026)
+// ============================================================================
+
+export const XAI_MODELS: ModelInfo[] = [
+  {
+    id: 'grok-3',
+    name: 'Grok 3',
+    provider: 'xai',
+    contextWindow: 131_072,
+    maxOutputTokens: 16_000,
+    capabilities: STANDARD_CAPABILITIES,
+    isDefault: true,
+    meta: { family: 'grok-3', inputCostPerMTok: 3, outputCostPerMTok: 15 },
+  },
+  {
+    id: 'grok-3-mini',
+    name: 'Grok 3 Mini',
+    provider: 'xai',
+    contextWindow: 131_072,
+    maxOutputTokens: 8_000,
+    capabilities: { ...BASIC_CAPABILITIES, extendedThinking: true },
+    meta: { family: 'grok-3', inputCostPerMTok: 0.25, outputCostPerMTok: 0.6 },
+  },
+  {
+    id: 'grok-2',
+    name: 'Grok 2',
+    provider: 'xai',
+    contextWindow: 131_072,
+    maxOutputTokens: 8_000,
+    capabilities: STANDARD_CAPABILITIES,
+    meta: { family: 'grok-2', inputCostPerMTok: 2, outputCostPerMTok: 10 },
+  },
+]
+
+// ============================================================================
 // Model Registry
 // ============================================================================
 
@@ -499,6 +781,14 @@ export const ALL_MODELS: Record<ProviderId, ModelInfo[]> = {
   openai: OPENAI_MODELS,
   gemini: GEMINI_MODELS,
   ollama: OLLAMA_MODELS,
+  mistral: MISTRAL_MODELS,
+  groq: GROQ_MODELS,
+  deepseek: DEEPSEEK_MODELS,
+  perplexity: PERPLEXITY_MODELS,
+  cohere: COHERE_MODELS,
+  xai: XAI_MODELS,
+  bedrock: ANTHROPIC_MODELS, // Bedrock uses Anthropic models
+  'azure-openai': OPENAI_MODELS, // Azure uses OpenAI models
 }
 
 /**

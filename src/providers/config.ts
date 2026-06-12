@@ -37,7 +37,7 @@ function createDefaultProviderConfig(providerId: ProviderId): ProviderConfig {
 }
 
 function createDefaultConfig(): ProvidersConfig {
-  return {
+  const config: ProvidersConfig = {
     activeProvider: 'anthropic',
     providers: {
       anthropic: createDefaultProviderConfig('anthropic'),
@@ -46,11 +46,25 @@ function createDefaultConfig(): ProvidersConfig {
       gemini: createDefaultProviderConfig('gemini'),
       ollama: {
         ...createDefaultProviderConfig('ollama'),
-        // Ollama doesn't require an API key
         enabled: false,
+      },
+      mistral: createDefaultProviderConfig('mistral'),
+      groq: createDefaultProviderConfig('groq'),
+      deepseek: createDefaultProviderConfig('deepseek'),
+      perplexity: createDefaultProviderConfig('perplexity'),
+      cohere: createDefaultProviderConfig('cohere'),
+      xai: createDefaultProviderConfig('xai'),
+      bedrock: {
+        ...createDefaultProviderConfig('bedrock'),
+        baseUrl: '', // Must be configured
+      },
+      'azure-openai': {
+        ...createDefaultProviderConfig('azure-openai'),
+        baseUrl: '', // Must be configured with Azure resource URL
       },
     },
   }
+  return config
 }
 
 // ============================================================================
