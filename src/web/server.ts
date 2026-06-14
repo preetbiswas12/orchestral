@@ -116,6 +116,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     }),
   }
 
+  // Subscribe WebSocketManager to the global event bus so services can push realtime updates
+  wsManager.subscribeToEventBus()
+
   options.onReady?.(instance.url)
   return instance
 }

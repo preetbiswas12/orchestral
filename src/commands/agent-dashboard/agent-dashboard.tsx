@@ -31,13 +31,23 @@ import { AgentProgressCard } from '../../components/AgentProgressCard.js'
 
 type View = 'swarms' | 'create' | 'history' | 'details'
 
-type LocalJSXCommandCall = (onDone: () => void) => Promise<React.ReactElement>
+type LocalJSXCommandCall = (
+  onDone: () => void,
+  context: any,
+  args: string,
+) => Promise<React.ReactElement>
 
-export const call: LocalJSXCommandCall = async onDone => {
-  return <AgentDashboardUI onClose={onDone} />
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
+  return <AgentDashboardUI onClose={onDone} toolUseContext={context} args={args} />
 }
 
-function AgentDashboardUI({ onClose }: { onClose: () => void }) {
+function AgentDashboardUI({
+  onClose,
+  toolUseContext,
+}: {
+  onClose: () => void
+  toolUseContext: any
+}) {
   const [view, setView] = useState<View>('swarms')
   const [selectedSwarmIdx, setSelectedSwarmIdx] = useState(0)
   const [selectedAgentIdx, setSelectedAgentIdx] = useState(0)
@@ -176,11 +186,37 @@ function AgentDashboardUI({ onClose }: { onClose: () => void }) {
       maxConcurrency,
     })
 
-    agentOrchestrator.startSwarm(swarmId)
+    // If we have a ToolUseContext (running inside an active session),
+    // pass it to startSwarm for real agent execution.
+    // Without context, agents are just tracked (legacy mode).
+    if (toolUseContext) {
+      try {
+        const { createCacheSafeParams, getLastCacheSafeParams } = require('../../utils/forkedAgent.js')
+        let cacheSafeParams = getLastCacheSafeParams?.()
+        if (!cacheSafeParams && createCacheSafeParams) {
+          cacheSafeParams = createCacheSafeParams(toolUseContext)
+        }
+        if (cacheSafeParams && toolUseContext.canUseTool) {
+          agentOrchestrator.startSwarm(swarmId, {
+            cacheSafeParams,
+            canUseTool: toolUseContext.canUseTool,
+          })
+        } else {
+          // Fallback: start without real execution
+          agentOrchestrator.startSwarm(swarmId)
+        }
+      } catch {
+        // Fallback: start without real execution
+        agentOrchestrator.startSwarm(swarmId)
+      }
+    } else {
+      agentOrchestrator.startSwarm(swarmId)
+    }
+
     setView('swarms')
     setSelectedSwarmIdx(0)
     setError(null)
-  }, [swarmName, agentInputs, mergeStrategy, maxConcurrency])
+  }, [swarmName, agentInputs, mergeStrategy, maxConcurrency, toolUseContext])
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1}>

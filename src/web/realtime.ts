@@ -3,7 +3,42 @@
  *
  * Manages WebSocket connections for the web dashboard.
  * Broadcasts state changes to all connected clients.
+ *
+ * Usage from services:
+ *   import { realtimeEventBus } from './realtime.js'
+ *   realtimeEventBus.emit('context_update', { percentage: 50, tokens: 45000 })
  */
+
+type EventHandler = (data: Record<string, unknown>) => void
+
+class EventBus {
+  private handlers: Map<string, EventHandler[]> = new Map()
+
+  on(event: string, handler: EventHandler): void {
+    const existing = this.handlers.get(event) ?? []
+    existing.push(handler)
+    this.handlers.set(event, existing)
+  }
+
+  off(event: string, handler: EventHandler): void {
+    const existing = this.handlers.get(event) ?? []
+    this.handlers.set(event, existing.filter(h => h !== handler))
+  }
+
+  emit(event: string, data: Record<string, unknown>): void {
+    const handlers = this.handlers.get(event) ?? []
+    for (const handler of handlers) {
+      try {
+        handler(data)
+      } catch {
+        // Ignore handler errors
+      }
+    }
+  }
+}
+
+/** Global event bus for realtime updates — bridges services to WebSocket clients */
+export const realtimeEventBus = new EventBus()
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -103,6 +138,22 @@ export class WebSocketManager {
       type: 'agent_update',
       data: { swarmId, agentId, status },
       timestamp: Date.now(),
+    })
+  }
+
+  /**
+   * Subscribe this WebSocketManager to the global event bus.
+   * Call this after server startup so services can push realtime events.
+   */
+  subscribeToEventBus(): void {
+    realtimeEventBus.on('context_update', (data) => {
+      this.broadcast({ type: 'context_update', data, timestamp: Date.now() })
+    })
+    realtimeEventBus.on('agent_update', (data) => {
+      this.broadcast({ type: 'agent_update', data, timestamp: Date.now() })
+    })
+    realtimeEventBus.on('task_update', (data) => {
+      this.broadcast({ type: 'task_update', data, timestamp: Date.now() })
     })
   }
 

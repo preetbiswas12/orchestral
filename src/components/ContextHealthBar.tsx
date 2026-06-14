@@ -8,8 +8,9 @@
  *   <ContextHealthBar currentTokens={45000} maxTokens={100000} width={15} />
  */
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Box, Text } from '../ink.js'
+import { healthMonitor } from '../services/contextEngine/index.js'
 
 interface ContextHealthBarProps {
   currentTokens: number
@@ -64,4 +65,37 @@ export function ContextHealthInline({
   else color = 'green'
 
   return <Text color={color}>ctx:{percentage}%</Text>
+}
+
+/**
+ * Connected health bar that reads directly from the health monitor.
+ * Drops into any component without needing to thread token counts through props.
+ *
+ * Usage:
+ *   <ContextHealthBarConnected width={15} />
+ */
+export function ContextHealthBarConnected({
+  width = 15,
+  showLabel = true,
+}: {
+  width?: number
+  showLabel?: boolean
+}): React.ReactElement {
+  const [health, setHealth] = useState(() => healthMonitor.getHealth())
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHealth(healthMonitor.getHealth())
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <ContextHealthBar
+      currentTokens={health.current.totalTokens}
+      maxTokens={health.current.maxTokens}
+      width={width}
+      showLabel={showLabel}
+    />
+  )
 }

@@ -64,6 +64,8 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'meta+c': 'app:contextEngine',
       'meta+a': 'app:agentDashboard',
       'meta+w': 'app:webDashboard',
+      'meta+g': 'app:github',
+      'meta+s': 'app:swarm',
     },
   },
   {

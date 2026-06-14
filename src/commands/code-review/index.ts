@@ -3,7 +3,7 @@ import type { Command } from '../../commands.js'
 const codeReview = {
   type: 'local-jsx',
   name: 'code-review',
-  description: 'AI-powered code review with security, performance, and style analysis',
+  description: 'Pattern-based code review — checks for security, performance, style, and bug patterns',
   load: () => import('./code-review.js'),
 } satisfies Command
 

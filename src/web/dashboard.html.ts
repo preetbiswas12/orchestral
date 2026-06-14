@@ -169,11 +169,107 @@ function connectWS() {
   state.ws.onmessage = (e) => {
     try {
       const event = JSON.parse(e.data);
-      if (event.type === 'context_update') renderContext();
-      if (event.type === 'agent_update') renderAgents();
-      if (event.type === 'task_update') renderOverview();
+      // Merge event data into state for polling fallback
+      if (event.data) Object.assign(state.data, event.data);
+
+      if (event.type === 'context_update') {
+        // Update context DOM directly from event data (no API roundtrip)
+        updateContextDOM(event.data);
+      } else if (event.type === 'agent_update') {
+        // Update agent card in-place
+        updateAgentCard(event.data);
+      } else if (event.type === 'server_info') {
+        // Initial connection info
+      }
     } catch {}
   };
+}
+
+// ── Lightweight DOM Updates from WebSocket Events ──────────────────
+
+function updateContextDOM(data) {
+  if (!data) return;
+  // Update the context bar fill
+  const fill = document.querySelector('#tab-context .progress-bar .fill');
+  if (fill && data.percentage != null) {
+    fill.style.width = data.percentage + '%';
+    fill.className = 'fill ' + (data.status === 'critical' ? 'red' : data.status === 'warning' ? 'yellow' : 'green');
+  }
+  // Update percentage text
+  const pctEl = document.querySelector('#tab-context .card .value');
+  if (pctEl && data.percentage != null) {
+    pctEl.textContent = data.percentage + '%';
+    pctEl.style.color = data.status === 'critical' ? 'var(--red)' : data.status === 'warning' ? 'var(--yellow)' : 'var(--green)';
+  }
+  // Update tokens sub text
+  const subEl = document.querySelector('#tab-context .card .sub');
+  if (subEl && data.totalTokens != null) {
+    subEl.textContent = data.totalTokens.toLocaleString() + ' / ' + (data.maxTokens || 0).toLocaleString();
+  }
+  // Also update overview tab context card if visible
+  const overviewFill = document.querySelector('#tab-overview .progress-bar .fill');
+  if (overviewFill && data.percentage != null) {
+    overviewFill.style.width = data.percentage + '%';
+    overviewFill.className = 'fill ' + (data.status === 'critical' ? 'red' : data.status === 'warning' ? 'yellow' : 'green');
+  }
+  const overviewPct = document.querySelector('#tab-overview .card .value');
+  if (overviewPct && data.percentage != null) {
+    overviewPct.textContent = data.percentage + '%';
+  }
+  const overviewSub = document.querySelector('#tab-overview .card .sub');
+  if (overviewSub && data.totalTokens != null) {
+    overviewSub.textContent = data.totalTokens.toLocaleString() + ' / ' + (data.maxTokens || 0).toLocaleString() + ' tokens';
+  }
+}
+
+function updateAgentCard(data) {
+  if (!data || !data.agentId) return;
+  // Find or create agent card
+  let card = document.querySelector('.agent-card[data-agent-id="' + data.agentId + '"]');
+  if (card) {
+    // Update existing card's status
+    const statusEl = card.querySelector('.status');
+    if (statusEl) {
+      statusEl.textContent = data.status;
+      statusEl.className = 'status ' + data.status;
+    }
+    const iconEl = card.querySelector('.status-icon');
+    if (iconEl) {
+      iconEl.textContent = data.status === 'completed' ? '✓' : data.status === 'running' ? '◉' : data.status === 'failed' ? '✗' : '○';
+    }
+    if (data.output) {
+      const preview = card.querySelector('.preview');
+      if (preview) preview.textContent = data.output.slice(0, 200);
+    }
+  }
+  // If card doesn't exist and we're on the agents tab, the next renderAgents() full render will pick it up
+}
+
+// ── Polling Fallback ───────────────────────────────────────────────
+// Fetches fresh data every 5 seconds as backup when WebSocket events don't fire
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(async () => {
+    try {
+      const [contextRes, tokensRes, agentsRes] = await Promise.all([
+        api('context'), api('tokens'), api('agents')
+      ]);
+      if (contextRes.data) {
+        state.data.context = contextRes.data.health;
+        updateContextDOM(contextRes.data.health);
+      }
+      if (tokensRes.data) state.data.tokens = tokensRes.data;
+      if (agentsRes.data) state.data.agents = agentsRes.data;
+    } catch {
+      // Polling failure is non-fatal
+    }
+  }, 5000);
+}
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 }
 
 function updateWsStatus() {
@@ -483,6 +579,7 @@ async function executeCommand(name) {
 // ── Init ──────────────────────────────────────────────────────────
 connectWS();
 renderOverview();
+startPolling();
 </script>
 </body>
 </html>`

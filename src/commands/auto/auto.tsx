@@ -26,15 +26,27 @@ import {
 
 type Phase = 'ready' | 'planning' | 'confirm' | 'executing' | 'results'
 
-type LocalJSXCommandCall = (onDone: () => void) => Promise<React.ReactElement>
+type LocalJSXCommandCall = (
+  onDone: () => void,
+  context: any,
+  args: string,
+) => Promise<React.ReactElement>
 
-export const call: LocalJSXCommandCall = async onDone => {
-  return <AutoUI onClose={onDone} />
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
+  return <AutoUI onClose={onDone} toolUseContext={context} args={args} />
 }
 
-function AutoUI({ onClose }: { onClose: () => void }) {
+function AutoUI({
+  onClose,
+  toolUseContext,
+  args,
+}: {
+  onClose: () => void
+  toolUseContext: any
+  args: string
+}) {
   const [phase, setPhase] = useState<Phase>('ready')
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(args || '')
   const [chain, setChain] = useState<CommandChain | null>(null)
   const [results, setResults] = useState<StepResult[]>([])
   const [currentStep, setCurrentStep] = useState(0)
@@ -75,6 +87,7 @@ function AutoUI({ onClose }: { onClose: () => void }) {
           setCurrentStep(index)
         },
         () => abortRef.current,
+        toolUseContext,
       )
       setResults(result.results)
       setPhase('results')

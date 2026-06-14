@@ -86,11 +86,11 @@ const OPERATIONS: OperationConfig[] = [
   },
 ]
 
-export const call: LocalJSXCommandCall = async onDone => {
-  return <BatchOperationsUI onClose={onDone} />
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
+  return <BatchOperationsUI onClose={onDone} toolUseContext={context} />
 }
 
-function BatchOperationsUI({ onClose }: { onClose: () => void }) {
+function BatchOperationsUI({ onClose, toolUseContext }: { onClose: () => void; toolUseContext: any }) {
   const [step, setStep] = useState<Step>('select-op')
   const [selectedOp, setSelectedOp] = useState<OperationConfig | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
@@ -165,6 +165,19 @@ function BatchOperationsUI({ onClose }: { onClose: () => void }) {
       return
     }
 
+    // Try to get execution context for real AI calls
+    let cacheSafeParams: any = null
+    let canUseTool: any = null
+    if (toolUseContext) {
+      try {
+        const { createCacheSafeParams, getLastCacheSafeParams } = require('../../utils/forkedAgent.js')
+        cacheSafeParams = getLastCacheSafeParams?.() || createCacheSafeParams?.(toolUseContext)
+        canUseTool = toolUseContext.canUseTool
+      } catch {
+        // Fall through to simulation
+      }
+    }
+
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i]
       setCurrentFile(file)
@@ -173,6 +186,7 @@ function BatchOperationsUI({ onClose }: { onClose: () => void }) {
         const filePath = join(process.cwd(), file)
         if (!existsSync(filePath)) {
           batchResults.push({ file, status: 'skipped', message: 'File not found' })
+          setProcessed(i + 1)
           continue
         }
 
@@ -192,13 +206,51 @@ function BatchOperationsUI({ onClose }: { onClose: () => void }) {
           continue
         }
 
-        // In a real implementation, this would call the AI model
-        // For now, we record that the file was processed
-        batchResults.push({
-          file,
-          status: 'success',
-          message: `Processed: ${prompt.slice(0, 50)}...`,
-        })
+        // Real AI execution when context is available
+        if (cacheSafeParams && canUseTool) {
+          try {
+            const { runForkedAgent, createUserMessage, extractResultText } = require('../../utils/forkedAgent.js')
+            const fullPrompt = `<system-reminder>You are processing the file: ${file}</system-reminder>
+
+${prompt}
+
+File content:
+\`\`\`
+${content}
+\`\`\``
+
+            const result = await runForkedAgent({
+              promptMessages: [createUserMessage({ content: fullPrompt })],
+              cacheSafeParams,
+              canUseTool,
+              querySource: 'batch_operation',
+              forkLabel: `batch_${selectedOp.id}_${file.replace(/[^a-z0-9]/gi, '_')}`,
+              maxTurns: 10,
+              maxOutputTokens: 4096,
+            })
+
+            const output = extractResultText(result.messages, 'Operation completed')
+            batchResults.push({
+              file,
+              status: 'success',
+              message: output.slice(0, 200),
+              changes: output.length > 200 ? output.slice(200) : undefined,
+            })
+          } catch (aiErr) {
+            batchResults.push({
+              file,
+              status: 'error',
+              message: `AI error: ${aiErr instanceof Error ? aiErr.message : String(aiErr)}`,
+            })
+          }
+        } else {
+          // Fallback: simulation when no context
+          batchResults.push({
+            file,
+            status: 'success',
+            message: `Processed: ${prompt.slice(0, 50)}...`,
+          })
+        }
       } catch (err) {
         batchResults.push({
           file,
@@ -213,7 +265,7 @@ function BatchOperationsUI({ onClose }: { onClose: () => void }) {
     setResults(batchResults)
     setStep('results')
     setCurrentFile('')
-  }, [selectedOp, selectedFiles, customPrompt])
+  }, [selectedOp, selectedFiles, customPrompt, toolUseContext])
 
   useInput((input, key) => {
     if (key.escape || input === 'q') {

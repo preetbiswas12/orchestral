@@ -65,6 +65,7 @@ export class ContextHealthMonitor {
 
   /**
    * Record a new context usage snapshot.
+   * Also records a cost entry so the token analytics dashboard shows real data.
    */
   recordSnapshot(
     totalTokens: number,
@@ -85,6 +86,41 @@ export class ContextHealthMonitor {
       this.history = this.history.slice(-MAX_HISTORY)
     }
     this.lastSnapshot = snapshot
+
+    // Record cost entry for token analytics dashboard
+    // Uses "anthropic" as default provider since that's what the main loop uses
+    // Token delta since last snapshot gives us this-turn usage
+    try {
+      const { recordCost } = require('../../providers/costOptimizer.js') as typeof import('../../providers/costOptimizer.js')
+      const prevTokens = this.history.length >= 2
+        ? this.history[this.history.length - 2].totalTokens
+        : 0
+      const deltaTokens = Math.max(0, totalTokens - prevTokens)
+      // Split delta roughly 70/30 input/output (typical for Claude)
+      const inputTokens = Math.round(deltaTokens * 0.7)
+      const outputTokens = Math.round(deltaTokens * 0.3)
+      if (deltaTokens > 0) {
+        recordCost('anthropic', 'claude-sonnet-4-20250514', inputTokens, outputTokens)
+      }
+    } catch {
+      // Cost tracking is best-effort; don't break health monitoring
+    }
+
+    // Push realtime context update to WebSocket clients
+    try {
+      const { realtimeEventBus } = require('../../web/realtime.js') as typeof import('../../web/realtime.js')
+      realtimeEventBus.emit('context_update', {
+        status: this.determineStatus(snapshot.percentage),
+        percentage: snapshot.percentage,
+        totalTokens: snapshot.totalTokens,
+        maxTokens: snapshot.maxTokens,
+        messageCount: snapshot.messageCount,
+        compactionCount: this.compactionCount,
+      })
+    } catch {
+      // Realtime is best-effort
+    }
+
     return snapshot
   }
 

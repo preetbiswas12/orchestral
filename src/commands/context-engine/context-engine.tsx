@@ -19,6 +19,7 @@ import {
   policyEvaluator,
   describeStrategy,
   recommendTier,
+  getStats as getCollapseStats,
   type CompactionTier,
   type PolicyConfig,
 } from '../../services/contextEngine/index.js'
@@ -42,19 +43,23 @@ function ContextEngineUI({ onClose }: { onClose: () => void }) {
 
   const tabs: Tab[] = ['overview', 'messages', 'files', 'strategies', 'history']
 
-  // Simulate context data (in real implementation, this comes from the app state)
-  const mockCurrentTokens = 45000
-  const mockMaxTokens = 100000
-  const mockMessageCount = 42
-
+  // Read real data from health monitor (populated by context collapse during query loop)
   const health = useMemo(() => {
-    healthMonitor.recordSnapshot(mockCurrentTokens, mockMaxTokens, mockMessageCount)
     return healthMonitor.getHealth()
-  }, [mockCurrentTokens, mockMaxTokens, mockMessageCount])
+  }, [])
 
   const healthBar = useMemo(() => {
     return healthMonitor.getHealthBar(20)
   }, [health])
+
+  const collapseStats = useMemo(() => {
+    return getCollapseStats()
+  }, [])
+
+  // Real token/message data from the health monitor
+  const currentTokens = health.current.totalTokens
+  const maxTokens = health.current.maxTokens
+  const messageCount = health.current.messageCount
 
   useInput((inputChar, key) => {
     if (key.escape) {
@@ -119,6 +124,11 @@ function ContextEngineUI({ onClose }: { onClose: () => void }) {
       const currentIdx = tabs.indexOf(tab)
       setTab(tabs[(currentIdx - 1 + tabs.length) % tabs.length])
     }
+
+    // Force refresh
+    if (inputChar === 'f' || inputChar === 'F') {
+      forceUpdate(prev => prev + 1)
+    }
   })
 
   return (
@@ -141,10 +151,10 @@ function ContextEngineUI({ onClose }: { onClose: () => void }) {
 
       {/* Tab content */}
       {tab === 'overview' && (
-        <OverviewTab health={health} healthBar={healthBar} currentTokens={mockCurrentTokens} maxTokens={mockMaxTokens} messageCount={mockMessageCount} />
+        <OverviewTab health={health} healthBar={healthBar} currentTokens={currentTokens} maxTokens={maxTokens} messageCount={messageCount} />
       )}
       {tab === 'messages' && (
-        <MessagesTab currentTokens={mockCurrentTokens} maxTokens={mockMaxTokens} />
+        <MessagesTab currentTokens={currentTokens} maxTokens={maxTokens} />
       )}
       {tab === 'files' && (
         <FilesTab searchQuery={searchQuery} searchInput={searchInput} />
@@ -157,13 +167,13 @@ function ContextEngineUI({ onClose }: { onClose: () => void }) {
         />
       )}
       {tab === 'history' && (
-        <HistoryTab health={health} />
+        <HistoryTab health={health} collapseStats={collapseStats} />
       )}
 
       {/* Footer */}
       <Box borderStyle="single" borderColor="gray" width="100%" />
       <Text dimColor>
-        1-5: switch tabs | Tab/n/p: navigate | Esc: back/quit
+        1-5: switch tabs | Tab/n/p: navigate | F: refresh | Esc: back/quit
         {tab === 'files' ? ' | /: search' : ''}
         {tab === 'strategies' ? ' | l/m/a: tier | r: recommend | t: toggle policy' : ''}
       </Text>
@@ -222,7 +232,7 @@ function OverviewTab({
 }
 
 function MessagesTab({ currentTokens, maxTokens }: { currentTokens: number; maxTokens: number }) {
-  const percentage = Math.round((currentTokens / maxTokens) * 100)
+  const percentage = maxTokens > 0 ? Math.round((currentTokens / maxTokens) * 100) : 0
   const recommended = recommendTier(percentage)
 
   return (
@@ -322,7 +332,13 @@ function StrategiesTab({
   )
 }
 
-function HistoryTab({ health }: { health: ReturnType<typeof healthMonitor.getHealth> }) {
+function HistoryTab({
+  health,
+  collapseStats,
+}: {
+  health: ReturnType<typeof healthMonitor.getHealth>
+  collapseStats: ReturnType<typeof getCollapseStats>
+}) {
   return (
     <Box flexDirection="column" marginY={1}>
       <Text bold>Compaction History</Text>
@@ -332,6 +348,17 @@ function HistoryTab({ health }: { health: ReturnType<typeof healthMonitor.getHea
           <Text>Average tokens saved: {health.avgTokensSavedPerCompaction.toLocaleString()}</Text>
         )}
         <Text>History snapshots: {health.history.length}</Text>
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold>Context Collapse Stats:</Text>
+        <Text>Collapsed spans: {collapseStats.collapsedSpans}</Text>
+        <Text>Collapsed messages: {collapseStats.collapsedMessages}</Text>
+        <Text>Staged spans: {collapseStats.stagedSpans}</Text>
+        <Text>Total runs: {collapseStats.health.totalSpawns}</Text>
+        <Text>Errors: {collapseStats.health.totalErrors}</Text>
+        {collapseStats.health.lastError && (
+          <Text color="red">Last error: {collapseStats.health.lastError}</Text>
+        )}
       </Box>
       {health.history.length > 0 && (
         <Box flexDirection="column" marginTop={1}>

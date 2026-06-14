@@ -2,17 +2,21 @@
  * Agent Orchestrator
  *
  * Multi-agent orchestration service that manages swarms of parallel agents.
- * Builds on the existing task system (LocalAgentTaskState, TaskStateBase) and
- * provides higher-level swarm management: spawn, track, steer, merge, cancel.
+ * Builds on the existing task system and runForkedAgent infrastructure to
+ * actually spawn real agent query loops.
  *
  * Integration:
- * - Uses existing TaskStatus, TaskStateBase, generateTaskId from Task.ts
- * - Uses existing LocalAgentTaskState for agent state tracking
- * - Uses existing agentNameRegistry for agent naming
- * - Uses existing AppState.tasks for task storage
+ * - Uses runForkedAgent() for actual agent execution (same as sideQuestion, compact, memory)
+ * - Uses CacheSafeParams for prompt cache sharing with parent
+ * - Uses extractResultText() for result extraction
+ * - Uses createUserMessage() for prompt construction
  */
 
 import { randomBytes } from 'crypto'
+import { runForkedAgent, extractResultText, createUserMessage } from '../utils/forkedAgent.js'
+import type { CacheSafeParams } from '../utils/forkedAgent.js'
+import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
+import { realtimeEventBus } from '../web/realtime.js'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -57,6 +61,15 @@ export interface SwarmState {
   totalDuration: number
   totalTokens: number
   mergedOutput?: string
+}
+
+/**
+ * Context needed to actually spawn agents (not just track state).
+ * Obtained from the query loop's ToolUseContext via createCacheSafeParams().
+ */
+export interface SwarmSpawnContext {
+  cacheSafeParams: CacheSafeParams
+  canUseTool: CanUseToolFn
 }
 
 // ── Swarm ID Generation ────────────────────────────────────────────
@@ -179,11 +192,18 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Start a swarm — marks all agents as ready to run.
-   * Actual agent execution is handled by the task system;
-   * this orchestrator tracks the swarm-level state.
+   * Start a swarm. Two modes:
+   *
+   * 1. With spawnContext: Actually spawns real agents via runForkedAgent().
+   *    Each agent runs in its own forked query loop with access to the full
+   *    conversation context (via CacheSafeParams for prompt cache sharing).
+   *    Progress is tracked via updateAgent() calls.
+   *
+   * 2. Without spawnContext: Legacy behavior — marks agents as 'running'
+   *    without actual execution. Used for config/planning from dashboards
+   *    that don't have query loop context.
    */
-  startSwarm(swarmId: string): void {
+  startSwarm(swarmId: string, spawnContext?: SwarmSpawnContext): void {
     const swarm = this.swarms.get(swarmId)
     if (!swarm) throw new Error(`Swarm not found: ${swarmId}`)
 
@@ -191,15 +211,104 @@ export class AgentOrchestrator {
     swarm.startedAt = Date.now()
     this.activeSwarmId = swarmId
 
-    // Mark agents as running up to concurrency limit
-    const { maxConcurrency } = swarm.config
-    let launched = 0
-    for (const agent of swarm.agents) {
-      if (launched >= maxConcurrency) break
-      if (agent.status === 'pending') {
-        agent.status = 'running'
-        launched++
+    if (!spawnContext) {
+      // Legacy mode: just mark agents as running (no real execution)
+      const { maxConcurrency } = swarm.config
+      let launched = 0
+      for (const agent of swarm.agents) {
+        if (launched >= maxConcurrency) break
+        if (agent.status === 'pending') {
+          agent.status = 'running'
+          launched++
+        }
       }
+      return
+    }
+
+    // Real execution mode: spawn agents via runForkedAgent
+    this.spawnAgents(swarm, spawnContext)
+  }
+
+  /**
+   * Spawn agents for a swarm using the provided execution context.
+   * Launches agents up to maxConcurrency and manages lifecycle.
+   * Fire-and-forget: runAgent calls updateAgent on completion, which
+   * triggers launchNextBatch to fill concurrency slots.
+   */
+  private spawnAgents(swarm: SwarmState, spawnContext: SwarmSpawnContext): void {
+    const { maxConcurrency } = swarm.config
+
+    // Mark initial batch as running
+    const pendingAgents = swarm.agents.filter(a => a.status === 'pending')
+    const initialBatch = pendingAgents.slice(0, maxConcurrency)
+    for (const agent of initialBatch) {
+      agent.status = 'running'
+    }
+
+    // Launch each agent. Each runAgent is independent and calls
+    // updateAgent on completion, which triggers launchNextBatch.
+    for (const agent of initialBatch) {
+      this.runAgent(swarm, agent, spawnContext)
+        .catch(err => {
+          // Safety net: shouldn't happen since runAgent catches internally
+          this.updateAgent(swarm.swarmId, agent.agentId, {
+            status: 'failed',
+            error: err instanceof Error ? err.message : String(err),
+          })
+        })
+    }
+  }
+
+  /**
+   * Run a single agent via runForkedAgent. This creates a forked query loop
+   * that shares the parent's prompt cache for efficiency.
+   */
+  private async runAgent(
+    swarm: SwarmState,
+    agent: SwarmAgentResult,
+    spawnContext: SwarmSpawnContext,
+  ): Promise<void> {
+    const startTime = Date.now()
+
+    try {
+      // Get the agent's prompt from the swarm config
+      const agentConfig = swarm.config.agents.find(a => a.agentId === agent.agentId)
+      const basePrompt = agentConfig?.prompt ?? 'No prompt provided.'
+
+      // Wrap the agent prompt with swarm-specific instructions
+      const promptContent = `<system-reminder>You are agent "${agent.name}" in a swarm called "${swarm.name}". Complete the task below independently and provide a thorough, self-contained response.</system-reminder>
+
+${basePrompt}`
+
+      const result = await runForkedAgent({
+        promptMessages: [createUserMessage({ content: promptContent })],
+        cacheSafeParams: spawnContext.cacheSafeParams,
+        canUseTool: spawnContext.canUseTool,
+        querySource: 'swarm_agent',
+        forkLabel: `swarm_${swarm.swarmId}_${agent.agentId}`,
+        maxTurns: 25, // Reasonable limit — agents should complete within 25 turns
+        maxOutputTokens: 8192, // Cap output — swarm agents shouldn't produce essays
+      })
+
+      const duration = Date.now() - startTime
+      const output = extractResultText(result.messages, 'Agent completed with no text output')
+      const totalTokens = result.totalUsage.input_tokens + result.totalUsage.output_tokens
+
+      this.updateAgent(swarm.swarmId, agent.agentId, {
+        status: 'completed',
+        output,
+        duration,
+        tokensUsed: totalTokens,
+      })
+    } catch (error) {
+      const duration = Date.now() - startTime
+      this.updateAgent(swarm.swarmId, agent.agentId, {
+        status: 'failed',
+        output: '',
+        duration,
+        tokensUsed: 0,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
@@ -214,6 +323,19 @@ export class AgentOrchestrator {
     if (!agent) return
 
     Object.assign(agent, update)
+
+    // Push realtime event to WebSocket clients
+    try {
+      realtimeEventBus.emit('agent_update', {
+        swarmId,
+        agentId,
+        status: update.status ?? agent.status,
+        output: update.output ?? agent.output,
+        tokensUsed: update.tokensUsed ?? agent.tokensUsed,
+      })
+    } catch {
+      // Realtime is best-effort
+    }
 
     // Update swarm totals
     swarm.totalTokens = swarm.agents.reduce((sum, a) => sum + a.tokensUsed, 0)

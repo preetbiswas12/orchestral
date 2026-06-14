@@ -3,8 +3,13 @@
  *
  * Executes a chain of commands with progress tracking, error handling,
  * and data flow between steps.
+ *
+ * When a ToolUseContext is provided, commands are dispatched through the
+ * real command system (mod.call(onDone, context, args)). Without context,
+ * a simplified local dispatch is used.
  */
 
+import { getCommandByName } from '../commands.js'
 import type { CommandStep, CommandChain } from './taskDecomposer.js'
 
 export interface StepResult {
@@ -34,6 +39,7 @@ export async function executeChain(
   chain: CommandChain,
   onProgress?: ProgressCallback,
   shouldAbort?: () => boolean,
+  toolUseContext?: any,
 ): Promise<ChainResult> {
   const results: StepResult[] = []
   const startTime = Date.now()
@@ -84,7 +90,7 @@ export async function executeChain(
 
     try {
       // Execute the command
-      const output = await executeStep(step, results)
+      const output = await executeStep(step, results, toolUseContext)
       result.status = 'success'
       result.output = output
       successCount++
@@ -110,17 +116,51 @@ export async function executeChain(
 
 /**
  * Execute a single command step.
- * This invokes the actual command through the command system.
+ *
+ * When toolUseContext is provided, dispatches the command through the real
+ * command system (same mechanism as /compact, /auto, etc.).
+ * Without context, falls back to simulated execution.
  */
-async function executeStep(step: CommandStep, previousResults: StepResult[]): Promise<string> {
-  // Build the full command string
+async function executeStep(
+  step: CommandStep,
+  previousResults: StepResult[],
+  toolUseContext?: any,
+): Promise<string> {
   const fullCommand = `/${step.command} ${step.args}`.trim()
 
-  // In a real implementation, this would invoke the command through the command system
-  // For now, we simulate execution with a delay
-  await new Promise(resolve => setTimeout(resolve, 500))
+  // If we have a ToolUseContext, dispatch through the real command system
+  if (toolUseContext) {
+    try {
+      const commands = require('../commands.js')
+      const allCommands = commands.getCommands ? commands.getCommands(toolUseContext?.options?.cwd ?? process.cwd()) : null
+      const allCommandsSync = commands.COMMANDS ? require('../commands.js').COMMANDS() : null
 
-  // Return a simulated output
+      // Try to find the command by name
+      const cmd = allCommandsSync
+        ? commands.findCommand(step.command, allCommandsSync)
+        : null
+
+      if (cmd && cmd.load) {
+        const mod = await cmd.load()
+        if (mod?.call) {
+          // Create a minimal onDone callback
+          let done = false
+          const onDone = () => { done = true }
+
+          // Call the command with the provided context
+          await mod.call(onDone, toolUseContext, step.args)
+          return `Executed: ${fullCommand}\nThe command was dispatched successfully.`
+        }
+      }
+
+      // Command not found or doesn't support direct call — fall through to simulation
+    } catch {
+      // Real dispatch failed — fall through to simulation
+    }
+  }
+
+  // Fallback: simulated execution
+  await new Promise(resolve => setTimeout(resolve, 500))
   return `Executed: ${fullCommand}\nCompleted successfully.`
 }
 

@@ -202,6 +202,10 @@ import tokenAnalytics from './commands/token-analytics/index.js'
 import contextEngine from './commands/context-engine/index.js'
 import agentDashboard from './commands/agent-dashboard/index.js'
 import web from './commands/web/index.js'
+import ci from './commands/ci/index.js'
+import pr from './commands/pr/index.js'
+import github from './commands/github/index.js'
+import swarm from './commands/swarm/index.js'
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
 // shim defers the heavy module until /insights is actually invoked.
 const usageReport: Command = {
@@ -295,6 +299,11 @@ const COMMANDS = memoize((): Command[] => [
   contextEngine,
   agentDashboard,
   web,
+  github,
+  pr,
+  issue,
+  ci,
+  swarm,
   cost,
   diff,
   doctor,
