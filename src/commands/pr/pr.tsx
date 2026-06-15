@@ -9,7 +9,7 @@
 
 import React from 'react'
 import { Box, Text } from 'ink'
-import { listPRs, getPR, checkAuth } from '../../services/github/api.js'
+import { listPRs, getPR, checkAuth, checkGhCliAvailable, getGhCliInstallGuide } from '../../services/github/api.js'
 
 type LocalJSXCommandCall = (onDone: () => void) => Promise<React.ReactElement>
 
@@ -27,6 +27,12 @@ export const call: LocalJSXCommandCall = async (onDone, context) => {
     return <PRCreateUI onClose={onDone} />
   }
 
+  // Check gh CLI availability before trying to fetch data
+  const ghCheck = checkGhCliAvailable()
+  if (!ghCheck.available) {
+    return <GhErrorUI onClose={onDone} />
+  }
+
   const num = parseInt(args)
   if (!isNaN(num)) {
     return <PRViewUI prNumber={num} onClose={onDone} />
@@ -35,6 +41,24 @@ export const call: LocalJSXCommandCall = async (onDone, context) => {
   // Fallback: open github dashboard
   const github = await import('../github/github.js')
   return github.call(onDone, context)
+}
+
+function GhErrorUI({ onClose }: { onClose: () => void }) {
+  const guide = getGhCliInstallGuide()
+  const lines = guide.split('\n')
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
+      <Text color="red" bold>GitHub CLI Required</Text>
+      {lines.map((line, i) => (
+        <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+          {line}
+        </Text>
+      ))}
+      <Box marginTop={1}>
+        <Text dimColor>Esc to close</Text>
+      </Box>
+    </Box>
+  )
 }
 
 function PRCreateUI({ onClose }: { onClose: () => void }) {
@@ -76,10 +100,18 @@ function PRViewUI({ prNumber, onClose }: { prNumber: number; onClose: () => void
   }
 
   if (status === 'error') {
+    const errorLines = (error ?? 'Unknown error').split('\n')
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
-        <Text color="red">Error loading PR #{prNumber}: {error}</Text>
-        <Text dimColor>Esc to close</Text>
+        <Text color="red" bold>Error loading PR #{prNumber}</Text>
+        {errorLines.map((line, i) => (
+          <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+            {line}
+          </Text>
+        ))}
+        <Box marginTop={1}>
+          <Text dimColor>Esc to close</Text>
+        </Box>
       </Box>
     )
   }

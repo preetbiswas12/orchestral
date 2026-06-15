@@ -7,12 +7,19 @@
 
 import { readFileSync, existsSync, statSync } from 'fs'
 import { readdir, stat, readFile } from 'fs/promises'
-import { join, basename, relative, extname } from 'path'
+import { join, basename, extname } from 'path'
 import { getCwd } from '../utils/cwd.js'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import { healthMonitor } from '../services/contextEngine/index.js'
 import { agentOrchestrator } from '../services/agentOrchestrator.js'
 import { WebSocketManager } from './realtime.js'
+import {
+  loadConfig,
+  getEnabledProviders,
+  getActiveProviderConfig,
+  hasAnyProviderConfigured,
+} from '../providers/config.js'
+import { COMMANDS, findCommand } from '../commands.js'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -64,40 +71,19 @@ export async function handleApiRequest(
   const path = url.pathname.replace('/api/', '')
 
   try {
-    // Route matching
-    if (path === 'project' && req.method === 'GET') {
-      return handleProject()
-    }
-    if (path === 'sessions' && req.method === 'GET') {
-      return handleSessions()
-    }
-    if (path.startsWith('sessions/') && req.method === 'GET') {
-      return handleSessionDetail(path.replace('sessions/', ''))
-    }
-    if (path === 'tokens' && req.method === 'GET') {
-      return handleTokens()
-    }
-    if (path === 'files' && req.method === 'GET') {
-      return handleFiles(url)
-    }
-    if (path.startsWith('files/') && req.method === 'GET') {
-      return handleFileContent(path.replace('files/', ''))
-    }
-    if (path === 'agents' && req.method === 'GET') {
-      return handleAgents()
-    }
-    if (path === 'context' && req.method === 'GET') {
-      return handleContext()
-    }
-    if (path === 'commands' && req.method === 'GET') {
-      return handleCommands()
-    }
-    if (path === 'command' && req.method === 'POST') {
-      return handleCommandExecute(req)
-    }
-    if (path === 'health' && req.method === 'GET') {
-      return handleHealth()
-    }
+    if (path === 'project' && req.method === 'GET') return handleProject()
+    if (path === 'sessions' && req.method === 'GET') return handleSessions()
+    if (path.startsWith('sessions/') && req.method === 'GET') return handleSessionDetail(path.replace('sessions/', ''))
+    if (path === 'tokens' && req.method === 'GET') return handleTokens()
+    if (path === 'files' && req.method === 'GET') return handleFiles(url)
+    if (path.startsWith('files/') && req.method === 'GET') return handleFileContent(path.replace('files/', ''))
+    if (path === 'agents' && req.method === 'GET') return handleAgents()
+    if (path === 'context' && req.method === 'GET') return handleContext()
+    if (path === 'commands' && req.method === 'GET') return handleCommands()
+    if (path === 'command' && req.method === 'POST') return handleCommandExecute(req)
+    if (path === 'health' && req.method === 'GET') return handleHealth()
+    if (path === 'providers' && req.method === 'GET') return handleProviders()
+    if (path === 'config' && req.method === 'GET') return handleConfig()
 
     return errorResponse('Not found', 404)
   } catch (err) {
@@ -111,7 +97,6 @@ async function handleProject(): Promise<Response> {
   const cwd = getCwd()
   const originalCwd = getOriginalCwd()
 
-  // Try to get git info
   let gitBranch: string | undefined
   let gitStatus: string | undefined
   try {
@@ -121,6 +106,19 @@ async function handleProject(): Promise<Response> {
       if (head.startsWith('ref: refs/heads/')) {
         gitBranch = head.replace('ref: refs/heads/', '')
       }
+    }
+    // Get git status summary
+    const { execSync } = await import('child_process')
+    try {
+      const statusOutput = execSync('git status --porcelain', { cwd, timeout: 5000, encoding: 'utf8' }) as string
+      const lines = statusOutput.trim().split('\n').filter(Boolean)
+      if (lines.length > 0) {
+        gitStatus = `${lines.length} changed file(s)`
+      } else {
+        gitStatus = 'clean'
+      }
+    } catch {
+      gitStatus = undefined
     }
   } catch {
     // Git info unavailable
@@ -191,7 +189,6 @@ async function handleSessionDetail(sessionId: string): Promise<Response> {
       const content = await readFile(join(sessionPath, transcriptFile), 'utf8')
       const lines = content.split('\n').filter(Boolean)
       messageCount = lines.length
-      // Rough token estimate
       tokenCount = Math.round(content.length / 4)
     }
 
@@ -251,7 +248,6 @@ interface FileEntry {
   isDirectory: boolean
   size?: number
   modified?: string
-  children?: FileEntry[]
 }
 
 async function handleFiles(url: URL): Promise<Response> {
@@ -259,7 +255,6 @@ async function handleFiles(url: URL): Promise<Response> {
   const subPath = url.searchParams.get('path') ?? ''
   const targetPath = join(cwd, subPath)
 
-  // Security: ensure we don't escape the project directory
   if (!targetPath.startsWith(cwd)) {
     return errorResponse('Access denied', 403)
   }
@@ -273,7 +268,7 @@ async function handleFiles(url: URL): Promise<Response> {
       if (!entry.isDirectory() && SKIP_EXTENSIONS.has(extname(entry.name))) continue
 
       const entryPath = join(subPath, entry.name)
-      let fileInfo: FileEntry = {
+      const fileInfo: FileEntry = {
         name: entry.name,
         path: entryPath,
         isDirectory: entry.isDirectory(),
@@ -281,9 +276,9 @@ async function handleFiles(url: URL): Promise<Response> {
 
       if (!entry.isDirectory()) {
         try {
-          const stats = await stat(join(targetPath, entry.name))
-          fileInfo.size = stats.size
-          fileInfo.modified = stats.mtime.toISOString()
+          const fileStats = await stat(join(targetPath, entry.name))
+          fileInfo.size = fileStats.size
+          fileInfo.modified = fileStats.mtime.toISOString()
         } catch {
           // Skip unreadable files
         }
@@ -292,7 +287,6 @@ async function handleFiles(url: URL): Promise<Response> {
       files.push(fileInfo)
     }
 
-    // Sort: directories first, then by name
     files.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
       return a.name.localeCompare(b.name)
@@ -389,31 +383,48 @@ function handleContext(): Promise<Response> {
 // ── Commands ───────────────────────────────────────────────────────
 
 function handleCommands(): Promise<Response> {
-  // Return a safe subset of command info (not the full Command objects which may contain functions)
-  const commandList = [
-    { name: 'auto', description: 'AI-powered command orchestrator', category: 'automation' },
-    { name: 'batch', description: 'Apply operations across multiple files', category: 'automation' },
-    { name: 'changelog', description: 'Auto-generate changelog from git history', category: 'git' },
-    { name: 'code-review', description: 'Review code for bugs, security, performance', category: 'analysis' },
-    { name: 'commit-gen', description: 'Generate conventional commit messages', category: 'git' },
-    { name: 'context-engine', description: 'Context Engine Pro dashboard', category: 'context' },
-    { name: 'agent-dashboard', description: 'Multi-Agent Dashboard', category: 'agents' },
-    { name: 'docs', description: 'Auto-generate documentation', category: 'documentation' },
-    { name: 'scaffold', description: 'Create a new project from templates', category: 'project' },
-    { name: 'sessions', description: 'Browse and manage past sessions', category: 'management' },
-    { name: 'snippets', description: 'Manage code snippets library', category: 'productivity' },
-    { name: 'test', description: 'Run the project test suite', category: 'testing' },
-    { name: 'token-analytics', description: 'View token usage analytics and costs', category: 'analytics' },
-    { name: 'provider-setup', description: 'Configure AI providers', category: 'config' },
-    { name: 'compact', description: 'Compact conversation context', category: 'session' },
-    { name: 'diff', description: 'View changes between working tree, staged, or branches', category: 'git' },
-    { name: 'model', description: 'Switch the active AI model', category: 'config' },
-    { name: 'theme', description: 'Change the color theme', category: 'config' },
-    { name: 'web', description: 'Open the Web Dashboard', category: 'web' },
-  ]
+  // Build the command list from the actual COMMANDS registry so the
+  // dashboard always shows what's really available.
+  try {
+    const allCommands = COMMANDS()
+    const commandList = allCommands
+      .filter(cmd => cmd.type === 'local-jsx' || cmd.type === 'local' || cmd.type === 'prompt')
+      .filter(cmd => {
+        // Skip internal-only commands
+        const cmdName = cmd.name || ''
+        return !cmdName.startsWith('_') && cmdName.length > 0
+      })
+      .map(cmd => ({
+        name: cmd.name,
+        description: cmd.description,
+        type: cmd.type,
+        category: cmd.type === 'prompt' ? 'prompt' : 'interactive',
+      }))
+      .slice(0, 50) // Cap at 50 to keep the response manageable
 
-  return Promise.resolve(jsonResponse({ commands: commandList }))
+    return Promise.resolve(jsonResponse({ commands: commandList }))
+  } catch {
+    // Fallback to static list if COMMANDS() fails
+    return Promise.resolve(jsonResponse({
+      commands: [
+        { name: 'auto', description: 'AI-powered command orchestrator', type: 'local-jsx', category: 'automation' },
+        { name: 'batch', description: 'Apply operations across multiple files', type: 'local-jsx', category: 'automation' },
+        { name: 'code-review', description: 'Review code for bugs, security, performance', type: 'local-jsx', category: 'analysis' },
+        { name: 'context-engine', description: 'Context Engine Pro dashboard', type: 'local-jsx', category: 'context' },
+        { name: 'agent-dashboard', description: 'Multi-Agent Dashboard', type: 'local-jsx', category: 'agents' },
+        { name: 'scaffold', description: 'Create a new project from templates', type: 'local-jsx', category: 'project' },
+        { name: 'token-analytics', description: 'View token usage analytics and costs', type: 'local-jsx', category: 'analytics' },
+        { name: 'compact', description: 'Compact conversation context', type: 'local-jsx', category: 'session' },
+        { name: 'model', description: 'Switch the active AI model', type: 'local-jsx', category: 'config' },
+        { name: 'theme', description: 'Change the color theme', type: 'local-jsx', category: 'config' },
+        { name: 'diff', description: 'View changes', type: 'local-jsx', category: 'git' },
+        { name: 'help', description: 'Show help', type: 'local-jsx', category: 'help' },
+      ],
+    }))
+  }
 }
+
+// ── Command Execute ────────────────────────────────────────────────
 
 async function handleCommandExecute(req: Request): Promise<Response> {
   try {
@@ -422,15 +433,113 @@ async function handleCommandExecute(req: Request): Promise<Response> {
       return errorResponse('Command name is required')
     }
 
-    // In a real implementation, this would dispatch to the command system
-    // For now, return a placeholder — the TUI handles actual execution
+    // Look up the command in the registry
+    const allCommands = COMMANDS()
+    const cmd = findCommand(body.command, allCommands)
+
+    if (!cmd) {
+      return errorResponse(`Command "${body.command}" not found in registry`, 404)
+    }
+
+    // Check if the command can be dispatched
+    if (cmd.type === 'prompt') {
+      // Prompt commands can be expanded — return the info
+      return jsonResponse({
+        message: `Command "${body.command}" is a prompt-type command. It expands to a text prompt that gets sent to the AI model in the TUI. Prompt commands need an active session to execute.`,
+        command: body.command,
+        args: body.args ?? '',
+        commandType: cmd.type,
+        note: 'To use this command, type it directly in the TUI prompt.',
+      })
+    }
+
+    if (cmd.type === 'local' || cmd.type === 'local-jsx') {
+      // These commands render TUI UI — they can't run in the web dashboard
+      return jsonResponse({
+        message: `Command "${body.command}" is a TUI-interactive command (${cmd.type}). It requires the terminal UI and cannot be executed from the web dashboard.`,
+        command: body.command,
+        args: body.args ?? '',
+        commandType: cmd.type,
+        note: `Type /${body.command} in the TUI to use this command.`,
+      })
+    }
+
     return jsonResponse({
-      message: `Command "${body.command}" received. Use the TUI for full execution.`,
+      message: `Command "${body.command}" has type "${cmd.type}" — not executable from the web dashboard.`,
       command: body.command,
       args: body.args ?? '',
+      commandType: cmd.type,
     })
-  } catch {
-    return errorResponse('Invalid request body')
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      return errorResponse('Invalid request body: expected JSON')
+    }
+    return errorResponse('Internal server error', 500)
+  }
+}
+
+// ── Providers ──────────────────────────────────────────────────────
+
+function handleProviders(): Promise<Response> {
+  try {
+    const config = loadConfig()
+    const enabledProviders = getEnabledProviders()
+    const active = getActiveProviderConfig()
+
+    // Return provider info without exposing API keys
+    const providers = Object.entries(config.providers).map(([id, cfg]) => ({
+      id,
+      enabled: cfg.enabled,
+      model: cfg.defaultModel,
+      baseUrl: cfg.baseUrl,
+      is_active: id === config.activeProvider,
+      has_api_key: !!cfg.apiKey,
+    }))
+
+    return jsonResponse({
+      active: active.id,
+      active_has_key: !!active.config.apiKey,
+      enabled_count: enabledProviders.length,
+      configured: hasAnyProviderConfigured(),
+      providers,
+    })
+  } catch (err) {
+    return jsonResponse({
+      active: null,
+      active_has_key: false,
+      enabled_count: 0,
+      configured: false,
+      providers: [],
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+// ── Config ─────────────────────────────────────────────────────────
+
+function handleConfig(): Promise<Response> {
+  try {
+    const config = loadConfig()
+    const cwd = getCwd()
+
+    // Return safe config info (no API keys)
+    return jsonResponse({
+      activeProvider: config.activeProvider,
+      configured: hasAnyProviderConfigured(),
+      enabledProviders: getEnabledProviders(),
+      project: {
+        name: basename(cwd),
+        path: cwd,
+      },
+      features: {
+        multiProvider: true,
+        agentSwarm: true,
+        contextEngine: true,
+        webDashboard: true,
+      },
+    })
+  } catch (err) {
+    return errorResponse(`Failed to load config: ${err instanceof Error ? err.message : String(err)}`, 500)
   }
 }
 
@@ -442,5 +551,7 @@ function handleHealth(): Promise<Response> {
     timestamp: Date.now(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
+    bun_version: process.version,
+    platform: process.platform,
   }))
 }

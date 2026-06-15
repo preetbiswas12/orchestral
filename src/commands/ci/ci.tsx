@@ -9,12 +9,18 @@
 
 import React from 'react'
 import { Box, Text } from 'ink'
-import { listRuns, getRun, rerunRun } from '../../services/github/api.js'
+import { listRuns, getRun, rerunRun, checkGhCliAvailable, getGhCliInstallGuide } from '../../services/github/api.js'
 
 type LocalJSXCommandCall = (onDone: () => void) => Promise<React.ReactElement>
 
 export const call: LocalJSXCommandCall = async (onDone, context) => {
   const args = (context as any)?.args?.trim() || ''
+
+  // Check gh CLI availability for any CI operation
+  const ghCheck = checkGhCliAvailable()
+  if (!ghCheck.available) {
+    return <GhErrorUI onClose={onDone} />
+  }
 
   if (!args) {
     const github = await import('../github/github.js')
@@ -34,6 +40,24 @@ export const call: LocalJSXCommandCall = async (onDone, context) => {
 
   const github = await import('../github/github.js')
   return github.call(onDone, context)
+}
+
+function GhErrorUI({ onClose }: { onClose: () => void }) {
+  const guide = getGhCliInstallGuide()
+  const lines = guide.split('\n')
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
+      <Text color="red" bold>GitHub CLI Required</Text>
+      {lines.map((line, i) => (
+        <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+          {line}
+        </Text>
+      ))}
+      <Box marginTop={1}>
+        <Text dimColor>Esc to close</Text>
+      </Box>
+    </Box>
+  )
 }
 
 function RunViewUI({ runId, onClose }: { runId: number; onClose: () => void }) {
@@ -56,10 +80,18 @@ function RunViewUI({ runId, onClose }: { runId: number; onClose: () => void }) {
   }
 
   if (status === 'error') {
+    const errorLines = (error ?? 'Unknown error').split('\n')
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
-        <Text color="red">Error loading Run #{runId}: {error}</Text>
-        <Text dimColor>Esc to close</Text>
+        <Text color="red" bold>Error loading Run #{runId}</Text>
+        {errorLines.map((line, i) => (
+          <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+            {line}
+          </Text>
+        ))}
+        <Box marginTop={1}>
+          <Text dimColor>Esc to close</Text>
+        </Box>
       </Box>
     )
   }
@@ -93,10 +125,18 @@ function RerunUI({ runId, onClose }: { runId: number; onClose: () => void }) {
   }
 
   if (status === 'error') {
+    const errorLines = (error ?? 'Unknown error').split('\n')
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
-        <Text color="red">Error: {error}</Text>
-        <Text dimColor>Esc to close</Text>
+        <Text color="red" bold>Error rerunning workflow #{runId}</Text>
+        {errorLines.map((line, i) => (
+          <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+            {line}
+          </Text>
+        ))}
+        <Box marginTop={1}>
+          <Text dimColor>Esc to close</Text>
+        </Box>
       </Box>
     )
   }

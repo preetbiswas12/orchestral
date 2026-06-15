@@ -7,7 +7,7 @@
  * Requires: `gh auth login` to be configured
  */
 
-import { exec } from 'child_process'
+import { exec, execSync } from 'child_process'
 import { promisify } from 'util'
 import type {
   PR, Issue, Workflow, Run, Notification, CheckStatus,
@@ -16,6 +16,56 @@ import type {
 } from './types.js'
 
 const execAsync = promisify(exec)
+
+// ── gh CLI Availability Check ──────────────────────────────────────
+
+let ghAvailabilityCache: { available: boolean; version?: string; error?: string } | null = null
+
+/**
+ * Check whether the `gh` CLI is installed and available on PATH.
+ * Result is cached after the first call.
+ */
+export function checkGhCliAvailable(): { available: boolean; version?: string; error?: string } {
+  if (ghAvailabilityCache) return ghAvailabilityCache
+
+  try {
+    const output = execSync('gh --version', { timeout: 5000, encoding: 'utf8' }) as string
+    const versionMatch = output.match(/(\d+\.\d+\.\d+)/)
+    ghAvailabilityCache = { available: true, version: versionMatch?.[1] }
+  } catch {
+    ghAvailabilityCache = {
+      available: false,
+      error: 'GitHub CLI (gh) is not installed or not on PATH. Install it from https://cli.github.com/ and run "gh auth login".',
+    }
+  }
+  return ghAvailabilityCache
+}
+
+/**
+ * Get a user-friendly error message when gh CLI is not available.
+ */
+export function getGhCliInstallGuide(): string {
+  const check = checkGhCliAvailable()
+  if (check.available) return ''
+
+  return [
+    '',
+    '╔══════════════════════════════════════════════════════════════╗',
+    '║  GitHub CLI (gh) is required but was not found.            ║',
+    '╠══════════════════════════════════════════════════════════════╣',
+    '║                                                              ║',
+    '║  Install gh CLI:                                             ║',
+    '║                                                              ║',
+    '║    Windows:  winget install GitHub.CLI                       ║',
+    '║    macOS:    brew install gh                                  ║',
+    '║    Linux:    https://github.com/cli/cli#installation         ║',
+    '║                                                              ║',
+    '║  Then authenticate:                                          ║',
+    '║    gh auth login                                             ║',
+    '║                                                              ║',
+    '╚══════════════════════════════════════════════════════════════╝',
+  ].join('\n')
+}
 
 // ── Cache ──────────────────────────────────────────────────────────
 
@@ -48,6 +98,16 @@ function clearCache(): void {
 // ── gh CLI Wrapper ─────────────────────────────────────────────────
 
 async function gh(args: string, options?: { timeout?: number; noCache?: boolean }): Promise<string> {
+  // Check gh CLI availability first
+  const ghCheck = checkGhCliAvailable()
+  if (!ghCheck.available) {
+    throw {
+      code: 'GH_NOT_INSTALLED',
+      message: ghCheck.error || 'gh CLI not found',
+      suggestion: 'Install from https://cli.github.com/ and run "gh auth login"',
+    } as GitHubError
+  }
+
   const cacheKey = `gh:${args}`
   if (!options?.noCache) {
     const cached = getCached<string>(cacheKey)
@@ -302,13 +362,23 @@ export async function markNotificationRead(threadId: string): Promise<void> {
 
 // ── Status Check ───────────────────────────────────────────────────
 
-export async function checkAuth(): Promise<{ authenticated: boolean; user?: string; error?: string }> {
+export async function checkAuth(): Promise<{ authenticated: boolean; user?: string; error?: string; ghAvailable?: boolean; ghVersion?: string }> {
+  // First check if gh CLI is even installed
+  const ghCheck = checkGhCliAvailable()
+  if (!ghCheck.available) {
+    return {
+      authenticated: false,
+      error: ghCheck.error || 'gh CLI not found',
+      ghAvailable: false,
+    }
+  }
+
   try {
     const output = await gh('api user --jq .login', { noCache: true })
-    return { authenticated: true, user: output }
+    return { authenticated: true, user: output, ghAvailable: true, ghVersion: ghCheck.version }
   } catch (err) {
     const ghErr = err as GitHubError
-    return { authenticated: false, error: ghErr.message }
+    return { authenticated: false, error: ghErr.message, ghAvailable: true, ghVersion: ghCheck.version }
   }
 }
 

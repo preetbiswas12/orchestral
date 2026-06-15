@@ -9,7 +9,7 @@
  * a simplified local dispatch is used.
  */
 
-import { getCommandByName } from '../commands.js'
+import { getCommand, COMMANDS, findCommand } from '../commands.js'
 import type { CommandStep, CommandChain } from './taskDecomposer.js'
 
 export interface StepResult {
@@ -89,7 +89,6 @@ export async function executeChain(
     onProgress?.(result, i, chain.steps.length)
 
     try {
-      // Execute the command
       const output = await executeStep(step, results, toolUseContext)
       result.status = 'success'
       result.output = output
@@ -117,9 +116,9 @@ export async function executeChain(
 /**
  * Execute a single command step.
  *
- * When toolUseContext is provided, dispatches the command through the real
- * command system (same mechanism as /compact, /auto, etc.).
- * Without context, falls back to simulated execution.
+ * Uses the synchronous COMMANDS() registry (which contains all statically
+ * imported commands) to find and dispatch the command. This avoids the
+ * broken require() call on an ESM module.
  */
 async function executeStep(
   step: CommandStep,
@@ -128,40 +127,78 @@ async function executeStep(
 ): Promise<string> {
   const fullCommand = `/${step.command} ${step.args}`.trim()
 
-  // If we have a ToolUseContext, dispatch through the real command system
-  if (toolUseContext) {
-    try {
-      const commands = require('../commands.js')
-      const allCommands = commands.getCommands ? commands.getCommands(toolUseContext?.options?.cwd ?? process.cwd()) : null
-      const allCommandsSync = commands.COMMANDS ? require('../commands.js').COMMANDS() : null
+  // Build context from previous steps
+  const previousOutput = previousResults
+    .filter(r => r.status === 'success' && r.output)
+    .map(r => r.output)
+    .join('\n')
 
-      // Try to find the command by name
-      const cmd = allCommandsSync
-        ? commands.findCommand(step.command, allCommandsSync)
-        : null
+  const enrichedArgs = previousOutput
+    ? `${step.args}\n\nContext from previous steps:\n${previousOutput}`.trim()
+    : step.args
 
-      if (cmd && cmd.load) {
-        const mod = await cmd.load()
-        if (mod?.call) {
-          // Create a minimal onDone callback
-          let done = false
-          const onDone = () => { done = true }
+  // Look up the command in the synchronous registry
+  const allCommands = COMMANDS()
+  const cmd = findCommand(step.command, allCommands)
 
-          // Call the command with the provided context
-          await mod.call(onDone, toolUseContext, step.args)
-          return `Executed: ${fullCommand}\nThe command was dispatched successfully.`
-        }
-      }
-
-      // Command not found or doesn't support direct call — fall through to simulation
-    } catch {
-      // Real dispatch failed — fall through to simulation
-    }
+  if (!cmd) {
+    // Command not found — return a clear message instead of silent simulation
+    return `[Command "${step.command}" is a known command but was not found in the active command registry. This may be because the command is gated behind a feature flag or has not been registered. Args: ${step.args}]`
   }
 
-  // Fallback: simulated execution
-  await new Promise(resolve => setTimeout(resolve, 500))
-  return `Executed: ${fullCommand}\nCompleted successfully.`
+  // Dispatch based on command type
+  if (cmd.type === 'local-jsx' || cmd.type === 'local') {
+    if (cmd.load) {
+      try {
+        const mod = await cmd.load()
+        if (mod?.call) {
+          // For local-jsx commands, we need a ToolUseContext.
+          // If one was provided (from /auto being invoked inside a session),
+          // pass it through. Otherwise create a minimal context.
+          const ctx = toolUseContext ?? createMinimalContext()
+
+          let resolved = false
+          const onDone = () => { resolved = true }
+
+          await mod.call(onDone, ctx, enrichedArgs)
+          return `Dispatched: ${fullCommand}\nCommand was loaded and executed through the real command system.`
+        }
+      } catch (err) {
+        throw new Error(`Failed to dispatch "${step.command}": ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    // Command found but can't be called directly (no `load` or no `call`)
+    return `[Command "${step.command}" found in registry but cannot be dispatched programmatically. It may require interactive TUI. Args: ${step.args}]`
+  }
+
+  if (cmd.type === 'prompt') {
+    // Prompt commands expand to text sent to the model
+    if (cmd.getPromptForCommand) {
+      try {
+        const prompt = await cmd.getPromptForCommand(enrichedArgs, toolUseContext)
+        return `[Prompt command "${step.command}" expanded. Prompt length: ${prompt.length} chars. Content: ${prompt.slice(0, 200)}...]`
+      } catch (err) {
+        throw new Error(`Failed to expand prompt for "${step.command}": ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    return `[Prompt command "${step.command}" — no getPromptForCommand handler]`
+  }
+
+  return `[Command "${step.command}" has type "${cmd.type}" — not dispatchable programmatically]`
+}
+
+/**
+ * Create a minimal context object for dispatching commands outside
+ * the normal query loop. This gives commands access to basic cwd
+ * information even when no full ToolUseContext is available.
+ */
+function createMinimalContext(): any {
+  return {
+    options: {
+      cwd: process.cwd(),
+    },
+    abortController: new AbortController(),
+  }
 }
 
 /**

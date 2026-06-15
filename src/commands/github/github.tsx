@@ -19,6 +19,7 @@ import {
   listRuns, getRun, rerunRun, cancelRun,
   getNotifications, markNotificationRead,
   checkAuth, getRepoInfo, clearCache,
+  checkGhCliAvailable, getGhCliInstallGuide,
 } from '../../services/github/api.js'
 import type { PR, Issue, Run, Notification } from '../../services/github/types.js'
 
@@ -64,9 +65,21 @@ function GitHubDashboardUI({ onClose }: { onClose: () => void }) {
   const loadInitial = useCallback(async () => {
     setPhase('loading')
     try {
+      // First check if gh CLI is even installed
+      const ghCheck = checkGhCliAvailable()
+      if (!ghCheck.available) {
+        setError(getGhCliInstallGuide())
+        setPhase('error')
+        return
+      }
+
       const auth = await checkAuth()
       if (!auth.authenticated) {
-        setError('Not authenticated. Run: gh auth login')
+        setError(
+          `Not authenticated with GitHub.\n\n` +
+          `Run: gh auth login\n\n` +
+          `If gh is installed but not on PATH, ensure it's in your system environment variables.`
+        )
         setPhase('error')
         return
       }
@@ -76,7 +89,13 @@ function GitHubDashboardUI({ onClose }: { onClose: () => void }) {
       await loadTabData('prs')
       setPhase('ready')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      // Check if the error is about gh not installed
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('not installed') || errMsg.includes('not found') || errMsg.includes('not on PATH')) {
+        setError(getGhCliInstallGuide())
+      } else {
+        setError(errMsg)
+      }
       setPhase('error')
     }
   }, [])
@@ -280,10 +299,16 @@ function GitHubDashboardUI({ onClose }: { onClose: () => void }) {
   }
 
   if (phase === 'error') {
+    // Support multi-line error messages (e.g. gh install guide)
+    const errorLines = (error ?? 'Unknown error').split('\n')
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="red" padding={1}>
         <Text color="red" bold>GitHub Error</Text>
-        <Text color="red">{error}</Text>
+        {errorLines.map((line, i) => (
+          <Text key={i} color={line.startsWith('║') ? 'yellow' : line.startsWith('╔') || line.startsWith('╠') || line.startsWith('╚') ? 'gray' : 'red'}>
+            {line}
+          </Text>
+        ))}
         <Box marginTop={1}>
           <Text dimColor>Press r to retry | Esc to close</Text>
         </Box>
