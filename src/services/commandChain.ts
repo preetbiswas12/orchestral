@@ -9,7 +9,7 @@
  * a simplified local dispatch is used.
  */
 
-import { getCommand, COMMANDS, findCommand } from '../commands.js'
+import { getCommand, getCommands, findCommand } from '../commands.js'
 import type { CommandStep, CommandChain } from './taskDecomposer.js'
 
 export interface StepResult {
@@ -137,8 +137,20 @@ async function executeStep(
     ? `${step.args}\n\nContext from previous steps:\n${previousOutput}`.trim()
     : step.args
 
-  // Look up the command in the synchronous registry
-  const allCommands = COMMANDS()
+  // Look up the command in the registry (use getCommands for full list including skills/plugins)
+  // Fall back to synchronous import if getCommands fails (e.g. outside of TUI context)
+  let allCommands
+  try {
+    allCommands = await getCommands(process.cwd())
+  } catch {
+    // Fallback: import the commands module synchronously for basic commands
+    const cmds = await import('../commands.js')
+    if (cmds.COMMANDS) {
+      allCommands = cmds.COMMANDS()
+    } else {
+      allCommands = []
+    }
+  }
   const cmd = findCommand(step.command, allCommands)
 
   if (!cmd) {

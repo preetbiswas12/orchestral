@@ -27,6 +27,7 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
   const [stats, setStats] = useState<ServerStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [port, setPort] = useState(3456)
+  const [browserOpened, setBrowserOpened] = useState(false)
 
   // Start server on mount
   useEffect(() => {
@@ -37,16 +38,31 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
       onReady: (url) => {
         if (!mounted) return
         setPhase('running')
-        // Try to open browser
-        try {
-          const { execSync } = require('child_process')
-          const platform = process.platform
-          if (platform === 'darwin') execSync(`open "${url}"`)
-          else if (platform === 'win32') execSync(`start "${url}"`)
-          else execSync(`xdg-open "${url}"`)
-        } catch {
-          // Browser open failed — user can navigate manually
-        }
+
+        // Try to open browser using the `open` package (cross-platform)
+        import('open').then(({ default: open }) => {
+          open(url).then(() => {
+            if (mounted) setBrowserOpened(true)
+          }).catch(() => {
+            // Browser open failed — user can navigate manually
+          })
+        }).catch(() => {
+          // Fallback: try execSync
+          try {
+            const { execSync } = require('child_process')
+            const platform = process.platform
+            if (platform === 'win32') {
+              execSync(`start "" "${url}"`)
+            } else if (platform === 'darwin') {
+              execSync(`open "${url}"`)
+            } else {
+              execSync(`xdg-open "${url}"`)
+            }
+            if (mounted) setBrowserOpened(true)
+          } catch {
+            // Browser open failed — user can navigate manually
+          }
+        })
       },
       onShutdown: () => {
         if (mounted) setPhase('error')
@@ -79,6 +95,27 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
     onClose()
   }, [server, onClose])
 
+  const handleOpenBrowser = useCallback(async () => {
+    if (!server) return
+    const url = server.url
+    try {
+      const { default: open } = await import('open')
+      await open(url)
+      setBrowserOpened(true)
+    } catch {
+      try {
+        const { execSync } = require('child_process')
+        const platform = process.platform
+        if (platform === 'win32') execSync(`start "" "${url}"`)
+        else if (platform === 'darwin') execSync(`open "${url}"`)
+        else execSync(`xdg-open "${url}"`)
+        setBrowserOpened(true)
+      } catch {
+        // Ignore
+      }
+    }
+  }, [server])
+
   useInput((inputChar, key) => {
     if (key.escape || inputChar === 'q') {
       handleShutdown()
@@ -86,22 +123,12 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
     }
 
     if (phase === 'running') {
-      if (inputChar === 'o' && server) {
-        // Re-open browser
-        const url = server.url
-        try {
-          const { execSync } = require('child_process')
-          const platform = process.platform
-          if (platform === 'darwin') execSync(`open "${url}"`)
-          else if (platform === 'win32') execSync(`start "${url}"`)
-          else execSync(`xdg-open "${url}"`)
-        } catch {
-          // Ignore
-        }
+      if (inputChar === 'o') {
+        handleOpenBrowser()
       }
-      if (inputChar === 's' && stats) {
-        // Show detailed stats (just triggers re-render)
-        setStats({ ...stats })
+      if (inputChar === 'c' && server) {
+        // Copy URL to clipboard hint
+        setBrowserOpened(false) // Reset to show URL again
       }
     }
   })
@@ -116,21 +143,31 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
       {phase === 'starting' && (
         <Box flexDirection="column" marginY={1}>
           <Text color="cyan">Starting server on port {port}...</Text>
+          <Text dimColor>This may take a moment...</Text>
         </Box>
       )}
 
       {phase === 'running' && server && (
         <Box flexDirection="column" marginY={1}>
           <Text color="green" bold>✓ Server running</Text>
-          <Text>  URL: <Text color="cyan">{server.url}</Text></Text>
-          <Text>  Dashboard: <Text color="cyan">{server.url}</Text></Text>
+          <Text>  </Text>
+          <Text bold>Dashboard URL:</Text>
+          <Text>  </Text>
+          <Text backgroundColor="blue" color="white" bold> {server.url} </Text>
+          <Text>  </Text>
+          {browserOpened && (
+            <Text color="green">  ✓ Browser opened automatically</Text>
+          )}
+          <Text>  </Text>
+          <Text dimColor>Open this URL in your browser to access the dashboard.</Text>
+          <Text>  </Text>
 
           {stats && (
             <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>--- Stats ---</Text>
+              <Text dimColor>--- Server Stats ---</Text>
               <Text>  Connected clients: <Text color="cyan">{stats.wsClients}</Text></Text>
-              <Text>  Total requests: {stats.totalRequests}</Text>
-              <Text>  Uptime: {Math.round(stats.uptime / 1000)}s</Text>
+              <Text>  Total requests: <Text color="cyan">{stats.totalRequests}</Text></Text>
+              <Text>  Uptime: <Text color="cyan">{Math.round(stats.uptime / 1000)}s</Text></Text>
             </Box>
           )}
 
@@ -142,6 +179,7 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
             <Text dimColor>  · Token usage analytics with charts</Text>
             <Text dimColor>  · Agent swarm monitoring (real-time)</Text>
             <Text dimColor>  · Context health dashboard</Text>
+            <Text dimColor>  · Provider status & configuration</Text>
             <Text dimColor>  · Command palette</Text>
           </Box>
         </Box>
@@ -158,11 +196,15 @@ function WebDashboardUI({ onClose }: { onClose: () => void }) {
       )}
 
       <Box borderStyle="single" borderColor="gray" width="100%" />
-      <Text dimColor>
-        {phase === 'running'
-          ? 'o: open in browser | s: refresh stats | q/Esc: stop & quit'
-          : 'q/Esc: cancel'}
-      </Text>
+      {phase === 'running' ? (
+        <Text dimColor>
+          o: open in browser | q/Esc: stop & quit
+        </Text>
+      ) : (
+        <Text dimColor>
+          q/Esc: cancel
+        </Text>
+      )}
     </Box>
   )
 }

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "bun run src/entrypoints/cli.tsx",
+    "dev:web": "bun run src/web/server.ts",
     "build": "bun build src/entrypoints/cli.tsx --outdir dist --target node",
     "typecheck": "tsc --noEmit",
     "start": "bun run dist/cli.js",

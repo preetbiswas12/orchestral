@@ -124,7 +124,7 @@ function AgentDashboardUI({
     if (toolUseContext) {
       try {
         // Dynamic import for ESM compatibility
-        import('../../utils/forkedAgent.js').then(({ createCacheSafeParams, getLastCacheSafeParams }) => {
+        import('../../utils/forkedAgent').then(({ createCacheSafeParams, getLastCacheSafeParams }) => {
           let cacheSafeParams = getLastCacheSafeParams?.()
           if (!cacheSafeParams && createCacheSafeParams) {
             cacheSafeParams = createCacheSafeParams(toolUseContext)
